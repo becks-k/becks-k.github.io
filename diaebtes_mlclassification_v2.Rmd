@@ -1,0 +1,437 @@
+---
+title: "Predicting Diabetes: Exploring Decision Trees, kNN and Logistic Regression"
+author: "Becky"
+date: "Mar 2023"
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## 1. Information on dataset  
+
+This dataset was extracted from Kaggle at <https://www.kaggle.com/datasets/uciml/pima-indians-diabetes-database>.\  
+
+*From Kaggle:*\
+*"This dataset is originally from the National Institute of Diabetes and Digestive and Kidney Diseases. The objective of the dataset is to diagnostically predict whether or not a patient has diabetes, based on certain diagnostic measurements included in the dataset. Several constraints were placed on the selection of these instances from a larger database. In particular, all patients here are females at least 21 years old of Pima Indian heritage."*\
+
+**Variables**\
+-- Pregnancies: No. of times pregnant -- Glucose: Plasma glucose concentration 2 hours after administration of an oral glucose tolerance test (mg/dl)\
+-- BloodPressure: Diastolic blood pressure (mm Hg)\
+-- SkinThickness: Triceps skin fold thickness (mm)\
+-- Insulin: 2-Hour serum insulin (mu U/ml)\
+-- BMI: Body mass index (weight in kg/(height in m)\^2)\
+-- DiabetesPedigreeFunction: Scores likelihood of diabetes based on family history -- Age: Age in years\
+-- Outcome: 0 = No diabetes, 1 = Diabetes\
+
+Notes:  
+\* Glucose tolerance test is used to detect diabetes. Participants are administered a sugary drink. Blood is then drawn after 2 - 3 hours and tested for its sugar levels. \< 140mg/dl \~ normal, \> 140 mg/dl and \< 199 mg/dl \~ potentially prediabetic, \> 199 mg/dl \~ potentially diabetic. Further testing is required for diagnosis.\
+\* Individual who produce insulin but are resistant to its effects have type 2 diabetes. Type 2 diabetes is reversible if detected early.
+
+```{r message=FALSE}
+# Load libraries
+library(tidyverse)
+library(ggplot2)
+library(visdat)
+library(psych)
+library(naniar)
+library(VIM)
+library(mice)
+library(ggcorrplot)
+library(rpart)
+library(caret)
+library(RANN)
+library(rpart.plot)
+library(randomForest)
+library(class)
+library(ROCR)
+library(car)
+library(GGally)
+```
+
+## 2. Understanding the data
+
+```{r}
+diabetes <- read.csv("data/diabetes.csv")
+str(diabetes)
+# Convert response to factor
+diabetes$Outcome <- as.factor(diabetes$Outcome)
+summary(diabetes)
+```
+
+There are 9 variables with 768 observations. Glucose, BloodPressure, SkinThickness, Insulin and BMI have 0 values, which is not plausible for its range of measurement. 500 individuals are labeled as non diabetic and 268 are labeled as diabetic.
+
+### 2.1 Missing and/or duplicated rows
+
+```{r}
+sum(is.na(diabetes))
+diabetes[is.na(diabetes), ]
+```
+
+```{r}
+nrow(diabetes) == nrow(distinct(diabetes))
+```
+
+Raw data does not have NA cells or duplicated rows.
+
+### 2.2 Variable check
+
+As Glucose, BloodPressure, SkinThickness, Insulin and BMI have 0 values, we will treat them as missing observations.
+
+```{r}
+diabetes_NA <- diabetes %>% 
+  mutate_at(c(2:6), ~na_if(.,0))
+summary(diabetes_NA)
+```
+
+5 observations for Glucose, 35 observations for BloodPressure, 227 observations for SkinThickness, 374 observations for Insulin and 11 observations for BMI are missing. We can choose to:\
+1. Drop rows with missing observations\
+2. Impute missing observations\
+<br>
+Dropping rows with missing observations would result in a substantial (\~50%) loss of sample size. Smaller sample sizes have increased uncertainty and might reduce the effectiveness of subsequent analysis or modeling. As such, let's explore the option to impute missing data.\
+<br>
+There are 3 types of missing:   
+1. Missing completely at random (MCAR)\
+2. Missing at random (MNAR)\
+3. Missing not at random (MNAR)\
+<br>
+To consider the type of imputation, we shall try to identify if there is a pattern to its missingness.
+
+```{r}
+vis_miss(diabetes_NA, cluster = TRUE)
+```
+
+```{r}
+# Check if missing data is based on other variables in dataset
+Miss_pattern <- function(variable) {
+  diabetes_NA %>% 
+  arrange({{variable}}) %>% 
+  vis_miss()
+}
+
+Miss_pattern(Pregnancies)
+Miss_pattern(Glucose)
+Miss_pattern(BloodPressure)
+Miss_pattern(SkinThickness)
+Miss_pattern(Insulin)
+Miss_pattern(BMI)
+Miss_pattern(DiabetesPedigreeFunction)
+Miss_pattern(Age)
+Miss_pattern(Outcome)
+```
+  
+Observations that are missing in Glucose, BloodPressure, SkinThickness and BMI are also missing in Insulin. It does not appear that the missing data forms a pattern other variables in the dataset.
+
+### 2.3 Overview of distribution
+
+```{r message=FALSE, warning=FALSE}
+ggpairs(diabetes_NA,
+        columns = 1:8,
+        aes(color = Outcome, alpha = 0.4),
+        upper = list(continuous = wrap("cor", size = 2.5)))
+```
+  
+Overall, variables are mildly to moderately correlated with each other. Insulin in particular, shows a moderate correlation with Glucose at 0.581. SkinThickness also shows a moderate correlation with BMI at 0.648. As slight clustering patterns can be observed for aformentioned variables, we will attempt to impute missing observations with kNN.
+
+### 2.3 kNN Imputation
+
+```{r}
+# Automatically standardises data
+imp <- preProcess(diabetes_NA,
+                  method = "knnImpute", 
+                  k = 27, 
+                  knnSummary = mean)
+diabetes_imp <- predict(imp, diabetes_NA)
+summary(diabetes_imp)
+```
+
+```{r}
+# Visualise distribution of imputed data vs actual data
+shadow <- diabetes_NA %>%
+  bind_shadow(only_miss = TRUE) %>% 
+  select(10:14)
+
+imp_shadow <- cbind(diabetes_imp, shadow)
+
+Distri_imp <- function(x, fill) {
+  ggplot(imp_shadow, aes({{x}}, fill = {{fill}})) +
+    geom_histogram()
+}
+
+Distri_imp(Glucose, Glucose_NA)
+Distri_imp(BloodPressure, BloodPressure_NA)
+Distri_imp(SkinThickness, SkinThickness_NA)
+Distri_imp(Insulin, Insulin_NA)
+Distri_imp(BMI, BMI_NA)
+```
+  
+Data imputed with kNN has a distribution that mirrors that of actual data.
+
+## 3. Create train and test sets
+  
+We will partition the data into 70:30 train test split for both imputed and non imputed datasets. The non imputed data will be used to train the model for decision trees as its algorithim is able to handle missing values.
+
+```{r}
+# Imputed
+set.seed(500)
+index <- sample(1:nrow(diabetes_imp), nrow(diabetes_imp) * .7, replace = FALSE)
+train.imp <- diabetes_imp[index,]
+test.imp <- diabetes_imp[-index,]
+
+# Original
+set.seed(500)
+index <- sample(1:nrow(diabetes_NA), nrow(diabetes_NA) * .7, replace = FALSE)
+train.org <- diabetes_NA[index,]
+test.org <- diabetes_NA[-index,]
+```
+
+## 4. Decision Tree
+
+### 4.1 Modeling
+
+```{r}
+set.seed(500)
+mdl.dt <- rpart(Outcome ~., data = train.org, method = "class")
+rpart.plot(mdl.dt)
+```
+  
+```{r}
+printcp(mdl.dt)
+```
+  
+The number of splits for mdl.dt is 12, with the lowest complexity parameter (cp) of 0.01. 
+
+### 4.2 Prediction
+
+```{r}
+mdl.dt.pred <- predict(mdl.dt, test.org, type = "class")
+confusionMatrix(mdl.dt.pred, test.org$Outcome, positive = "1")
+```
+
+To ensure that diabetes can be detected for early intervention, and to reduce unnecessary healthcare cost incurred from false diagnosis, we look to minimise false negatives and false positives. Accuracy (TP+TN/all), sensitivity (TP/(TP+FN)) and specificity (TN/(TN+FP)) will be compared between models.  
+
+mdl.dt returned an accuracy of 0.7403, sensitivity of 0.6076, specificity of 0.8092 with a kappa of 0.4194 (moderate agreement).
+
+### 4.3 Pruning
+
+```{r}
+printcp(mdl.dt)
+```
+
+A tree with many nodes can be difficult to interpret. Pruning the tree reduces the model's complexity and make the model more intepretable. A plot of cp against cross validation error shows that the number of splits that returns the lowest error is 5, with cp 0.027.
+
+```{r}
+set.seed(500)
+mdl.dt.tuned <- rpart(Outcome~., 
+                    data = train.org, 
+                    method = "class",
+                    control = rpart.control(cp = 0.027, minsplit = 3))
+
+rpart.plot(mdl.dt.tuned)
+```
+
+### 4.4 Evaluation
+
+```{r}
+mdl.dt.tuned.pred <- predict(mdl.dt.tuned, test.org, type = "class")
+mdl.dt.tuned.cf <- confusionMatrix(mdl.dt.tuned.pred, test.org$Outcome, positive = "1")
+mdl.dt.tuned.cf
+```
+
+mdl.dt.tuned did not perform as well on unseen data as mdl.dt. It returned a lower accuracy of 0.71, sensitivity of 0.5696, specificity of 0.7829 with a kappa of 0.3536 (fair agreement). 
+
+## 5. Random Forest
+
+### 5.1 Modeling
+
+```{r}
+set.seed(500)
+mdl.rf <- randomForest(Outcome~., data = train.imp) #as randomForest is unable to handle missing data, imp version will be used
+mdl.rf
+```
+
+### 5.2 Prediction
+
+```{r}
+mdl.rf.pred <- predict(mdl.rf, test.imp, type = "class")
+confusionMatrix(mdl.rf.pred, test.imp$Outcome, positive = "1")
+```
+
+mdl.rf returned an accuracy of 0.7749, sensitivity of 0.6329, specificity of 0.8487 with a kappa of 0.4905.
+
+### 5.2 Tuning
+
+```{r}
+plot(mdl.rf)
+legend(x = "right", legend = colnames(mdl.rf$err.rate),fill = 1:ncol(mdl.rf$err.rate))
+```
+
+```{r}
+set.seed(500)
+mdl.rf.mtry <- tuneRF(train.imp[,-9], train.imp[,9],
+                       stepFactor = 8,  
+                       plot = TRUE,       
+                       ntreeTry = 500,  
+                       trace = TRUE,
+                       improve = 0.05    
+                       )
+```
+mtry = 1 returned the lowest OOB error.  
+
+```{r}
+set.seed(500)
+mdl.rf.tuned <- randomForest(Outcome~., data = train.imp, ntree = 500, mtry = 1)
+mdl.rf.tuned
+```
+
+### 5.3 Evaluation
+
+```{r}
+mdl.rf.tuned.pred <- predict(mdl.rf.tuned, test.imp, type = "class")
+mdl.rf.tuned.cf <- confusionMatrix(mdl.rf.tuned.pred, test.imp$Outcome, positive = "1")
+mdl.rf.tuned.cf
+```
+
+mdl.rf.tuned returned a slightly higher accuracy of 0.7835, sensitivity of 0.6582, specificity of 0.8487 with a kappa of 0.5132.  
+
+```{r}
+varImpPlot(mdl.rf.tuned)
+importance(mdl.rf.tuned)
+```
+
+Variables Glucose and Insulin have the highest impact on the Random Forest model.  
+
+## 6. kNN
+
+### 6.1 Train and test sets
+
+```{r}
+train.imp.knn <- train.imp[,-9]
+test.imp.knn <- test.imp[,-9]
+
+train.imp.label <- train.imp[,9]
+test.imp.label <- test.imp[,9]
+
+```
+
+### 6.2 Applying kNN algorithm
+
+```{r}
+mdl.knn <- knn(train = train.imp.knn, 
+               test = test.imp.knn, 
+               cl = train.imp.label, 
+               k = 23) #sqrt(nrow(train.imp.knn))
+```
+
+```{r}
+mdl.knn.cf <- confusionMatrix(table("Prediction" = mdl.knn, "Actual" = test.imp.label ), positive = "1")
+mdl.knn.cf
+```
+
+mdl.knn returned an accuracy of 0.7446, sensitivity of 0.5063, specificity of 0.8684 with a kappa of 0.3977.
+
+### 6.3 Identifying optimal k
+
+```{r}
+set.seed(500)
+mdl.cv.knn <- train(Outcome ~ ., train.imp,
+               method = "knn",            
+               trControl = trainControl(method = "cv", number = 10),
+               tuneLength = 10)
+
+mdl.cv.knn
+```
+
+### 6.2 Evaluation
+
+```{r}
+mdl.knn.tuned <- knn(train = train.imp.knn, 
+               test = test.imp.knn, 
+               cl = train.imp.label, 
+               k = 9)
+
+mdl.knn.tuned.cf <- confusionMatrix(table("Prediction" = mdl.knn.tuned, "Actual" = test.imp.label ), positive = "1")
+mdl.knn.tuned.cf
+```
+
+mdl.knn.tuned performed slightly better than mdl.knn. It returned an accuracy of 0.7489, sensitivity of 0.5949, specificity of 0.8289 with a kappa of 0.4318.  
+
+## 7. Logistic Regression
+
+### 7.1 Modeling
+
+```{r}
+mdl.glm <- glm(Outcome~., family  = "binomial", data = train.imp)
+summary(mdl.glm)
+```
+
+### 7.2 Feature Selection
+
+```{r}
+# Stepwise Regression
+step(mdl.glm, direction = "back")
+```
+
+```{r}
+# Modeling with reduced features
+mdl.glm.b <- glm(Outcome ~ Pregnancies + Glucose + BMI + DiabetesPedigreeFunction, family = "binomial", data = train.imp)
+summary(mdl.glm.b)
+```
+
+```{r}
+# Using anova to compare models
+anova(mdl.glm, mdl.glm.b)
+```
+
+There does not appear to be a significant difference between the two models. AIC is slightly lower on model with reduced features, hence we will proceed with mdl.glm.b.
+
+### 7.3 Prediction
+
+```{r}
+test.imp$glm_pred <- predict(mdl.glm.b, test.imp, type = "response")
+mdl.glm.b.cf <- confusionMatrix(table("Predicted"= round(test.imp$glm_pred), "Actual"=test.imp$Outcome), positive = "1")
+mdl.glm.b.cf
+```
+
+mdl.glm.b returned an accuracy of 0.7792, sensitivity of 0.6076, specificity of 0.8684 with a kappa of 0.4925.
+
+## 8. Evaluation across models
+
+```{r}
+# Extracting metrics for comparison
+Evaulation <- function(model) {
+  data.frame(Accuracy = model$overall[[1]],
+           Kappa = model$overall[[2]],
+           Sensitivity = model$byClass[[1]],
+           Specificity = model$byClass[[2]])
+  
+}
+
+a <- Evaulation(mdl.dt.tuned.cf)
+b <- Evaulation(mdl.rf.tuned.cf)
+c <- Evaulation(mdl.knn.tuned.cf)
+d <- Evaulation(mdl.glm.b.cf)
+
+table_mdl <- bind_rows(a, b, c, d)
+table_mdl$Model <- c("Decision Tree", "Random Forest", "kNN", "Logistic Regression")
+table_mdl
+```
+
+```{r}
+# Visualising metrics across models
+table_mdl_long <- gather(table_mdl, "Metric", "Values", 1:4) 
+
+ggplot(table_mdl_long, aes(Model, Values, fill = Model)) +
+  geom_col() +
+  geom_text(aes(label = round(Values, 2)), vjust = -.5) +
+  facet_wrap(~Metric)
+```
+
+Modeling with random forest returns the highest overall values with accuracy, sensitivity and specificity at 78%, 66% and 85%, followed by logistic regression at 78%, 61% and 87%.
