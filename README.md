@@ -1,6 +1,6 @@
 ### Hello there, thanks for dropping by 👋. 
 
-This is a collection of the projects I've worked on with R . Some to hone in on the skills I've picked up from studies, others out of pure curiosity. Feedback is welcomed 🙆‍♀️!
+This is a collection of the projects I've worked on with R . Some to hone in on the skills I've picked up, others out of pure curiosity. Feedback is welcomed 🙆‍♀️!
 
 <!--
 **becks-k/becks-k** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
