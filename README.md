@@ -3,6 +3,7 @@
 This is a collection of the projects I've worked on with R studio . Some to hone in on the skills I've picked up, others out of pure curiosity. Feedback is welcomed 🙆‍♀️!
 
 👁‍🗨 Predicting Diabetes with Classification Algorithms: https://becks-k.github.io/Exploring-Classification-Algorithms/
+<br>
 👁‍🗨 Data Visualisation Tool with Shiny: https://saltedapples.shinyapps.io/data_viz/
 
 <!--
