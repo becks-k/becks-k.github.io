@@ -4,7 +4,8 @@ This is a collection of the projects I've worked on with R studio . Some to hone
 
 👁‍🗨 Predicting Diabetes with Classification Algorithms: https://becks-k.github.io/Exploring-Classification-Algorithms/
 <br>
-👁‍🗨 Data Visualisation Tool with Shiny: https://saltedapples.shinyapps.io/data_viz/
+👁‍🗨 Data Visualisation with Shiny: https://saltedapples.shinyapps.io/data_viz/
+👁‍🗨 Text Analysis on Gym Reviews: https://beckyk.shinyapps.io/gym_reviews_dashboard/
 
 <!--
 **becks-k/becks-k** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
