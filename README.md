@@ -1,4 +1,4 @@
-### Hello there, thanks for dropping by 👋🙆‍. 
+### Hello there, thanks for dropping by 👋🙆‍ 
 
 This is a collection of the projects I've worked on with R studio . Some to hone in on specific skills, others out of curiosity.
 
