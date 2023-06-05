@@ -7,7 +7,7 @@ This is a collection of the projects I've worked on with R studio . Some to hone
 📃 Skills: Data cleaning, machine learning
 <br>
 <br>
-🤓 Data Visualisation with Shiny:  https://beckyk.shinyapps.io/data_viz/
+🤓 Data Visualisation with Shiny:   https://beckyk.shinyapps.io/data_visualisation/
 <br>
 📃 Skills: Data visualisation, Shiny 
 <br>
